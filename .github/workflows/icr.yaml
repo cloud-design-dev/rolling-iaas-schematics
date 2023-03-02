@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: ICR Image build and push
 
 on:
   push:
@@ -13,18 +13,30 @@ env:
   ICR_TOKEN: ${{secrets.ICR_TOKEN}}
 
 jobs:
-  build:
-
+  build-and-push:
+    name: Build image
     runs-on: ubuntu-latest
+
     steps:
     - uses: actions/checkout@v3
-    - name: Login to IBM Cloud Container Registry
-      run: |
-        docker login -u iamapikey -p ${{ env.ICR_TOKEN}} ${{ env.REGISTRY_URL}}
-    - name: Build the Docker image
-      run: docker build . --file Dockerfile --tag ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:${{ github.sha }} --tag ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:latest
-      
-    - name: Push image to IBM Cloud Container Registry
-      run: |
-        docker push ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        docker push ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:latest
+
+    - name: Buildah Action
+      id: build-image
+      uses: redhat-actions/buildah-build@v2
+      with:
+        image: ${{ env.IMAGE_NAME}}
+        tags: latest ${{ github.sha }}
+        containerfiles: |
+          ./Dockerfile
+    - name: Push To ICR
+      id: push-to-icr
+      uses: redhat-actions/push-to-registry@v2
+      with:
+        image: ${{ steps.build-image.outputs.image }}
+        tags: ${{ steps.build-image.outputs.tags }}
+        username: iamapikey
+        password: ${{ env.ICR_TOKEN }}
+        registry: ${{ env.REGISTRY_URL }}
+
+    - name: Print image url
+      run: echo "Image pushed to ${{ steps.push-to-icr.outputs.registry-paths }}"
