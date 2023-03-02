@@ -1,0 +1,4 @@
+ibm-cloud-sdk-core==3.16.2
+ibm-platform-services==0.31.1
+ibm-schematics==1.1.0
+python-dateutil==2.8.2

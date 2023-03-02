@@ -1,0 +1,30 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+env:
+  GITHUB_SHA: ${{ github.sha }}
+  IMAGE_NAME: rolling-iaas
+  REGISTRY_URL: us.icr.io
+  ICR_NAMESPACE: rtiffany
+  ICR_TOKEN: ${{secrets.ICR_TOKEN}}
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Login to IBM Cloud Container Registry
+      run: |
+        docker login -u iamapikey -p ${{ env.ICR_TOKEN}} ${{ env.REGISTRY_URL}}
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:${{ github.sha }} --tag ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:latest
+      
+    - name: Push image to IBM Cloud Container Registry
+      run: |
+        docker push ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{env.ICR_NAMESPACE}}/${{ env.IMAGE_NAME }}:latest
