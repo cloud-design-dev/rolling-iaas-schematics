@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 from ibm_cloud_sdk_core import ApiException
