@@ -102,9 +102,9 @@ def getWorkspaceOutputs(workspaceId, schematicsService):
     print(json.dumps(wsOutputs, indent=2))
 
 try:
-    updateWorkspace(workspaceId, refreshToken, schematics_service)
-    planWorkspace(workspaceId, refreshToken, schematics_service)
-    applyWorkspace(workspaceId, refreshToken, schematics_service)
+    updateWorkspace(workspaceId, refreshToken, schematicsService)
+    planWorkspace(workspaceId, refreshToken, schematicsService)
+    applyWorkspace(workspaceId, refreshToken, schematicsService)
     getWorkspaceOutputs(workspaceId, schematicsService)
 except ApiException as e:
      print("Workspace update failes with status code " + str(e.code) + ": " + e.message)
