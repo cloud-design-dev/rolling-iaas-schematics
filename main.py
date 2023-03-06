@@ -5,6 +5,29 @@ from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 from ibm_cloud_sdk_core import ApiException
 from ibm_schematics.schematics_v1 import SchematicsV1
 import time 
+import logging
+from logdna import LogDNAHandler
+
+loggingIngestionKey = os.environ.get('LOGDNA_INGESTION_KEY')
+
+log = logging.getLogger('logdna')
+log.setLevel(logging.INFO)
+
+options = {
+  'hostname': 'code-engine-job-runner',
+  'env': 'us-south',
+  'url': 'https://logs.us-south.logging.cloud.ibm.com/logs/ingest',
+  'log_error_response': True
+}
+
+logAnalysis = LogDNAHandler(loggingIngestionKey, options)
+
+log.addHandler(logAnalysis)
+
+log.warning("Warning message", extra={'app': 'bloop'})
+log.info("Info message from " + name + " on " + version_date + "")
+
+etcdVars = os.environ.get('CE_SERVICES')
 
 # Set up IAM authenticator and Refresh Token
 authenticator = IAMAuthenticator(
@@ -48,6 +71,10 @@ def updateWorkspace(workspaceId, refreshToken, schematicsService):
         if (jobStatus == 'job_in_progress' or jobStatus == 'job_pending'):
             print("Workspace update in progress. Checking again in 30 seconds...")
             time.sleep(30)
+        elif (jobStatus == 'job_cancelled' or jobStatus == 'job_failed'):
+            log.warning("Workspace update failed. Please check the logs by running the following command: ibmcloud schematics job logs --id " + updateActivityId)
+            print("Workspace update failed. Please check the logs by running the following command: ibmcloud schematics job logs --id " + updateActivityId)
+            break
         else:
             print("Workspace update complete. Proceeding to Workspace plan.")
             break
@@ -106,5 +133,6 @@ try:
     planWorkspace(workspaceId, refreshToken, schematicsService)
     applyWorkspace(workspaceId, refreshToken, schematicsService)
     getWorkspaceOutputs(workspaceId, schematicsService)
+    print(etcdVars)
 except ApiException as e:
      print("Workspace update failes with status code " + str(e.code) + ": " + e.message)
