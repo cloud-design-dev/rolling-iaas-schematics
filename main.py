@@ -24,9 +24,6 @@ logAnalysis = LogDNAHandler(loggingIngestionKey, options)
 
 log.addHandler(logAnalysis)
 
-log.warning("Warning message", extra={'app': 'bloop'})
-log.info("Info message from " + name + " on " + version_date + "")
-
 etcdVars = os.environ.get('CE_SERVICES')
 
 # Set up IAM authenticator and Refresh Token
