@@ -5,26 +5,14 @@ from ibm_cloud_sdk_core.authenticators import IAMAuthenticator
 from ibm_cloud_sdk_core import ApiException
 from ibm_schematics.schematics_v1 import SchematicsV1
 import time 
-import logging
-from logdna import LogDNAHandler
+import base64
+import etcd3
 
-loggingIngestionKey = os.environ.get('LOGDNA_INGESTION_KEY')
+## Only uncomment if you need to debug gprc connection.
+# os.environ['GRPC_TRACE'] = 'all'
+# os.environ['GRPC_VERBOSITY'] = 'DEBUG'
 
-log = logging.getLogger('logdna')
-log.setLevel(logging.INFO)
 
-options = {
-  'hostname': 'code-engine-job-runner',
-  'env': 'us-south',
-  'url': 'https://logs.us-south.logging.cloud.ibm.com/logs/ingest',
-  'log_error_response': True
-}
-
-logAnalysis = LogDNAHandler(loggingIngestionKey, options)
-
-log.addHandler(logAnalysis)
-
-etcdVars = os.environ.get('CE_SERVICES')
 
 # Set up IAM authenticator and Refresh Token
 authenticator = IAMAuthenticator(
@@ -123,13 +111,58 @@ def getWorkspaceOutputs(workspaceId, schematicsService):
         w_id=workspaceId,
     ).get_result()
 
-    print(json.dumps(wsOutputs, indent=2))
+    pullAllOutputs = pullUbuntuIp = wsOutputs[0]['output_values'][0]
+    # print("All outputs are: " + str(pullAllOutputs))
+    ubuntuInstanceID = wsOutputs[0]['output_values'][0]['ubuntu_instance_id']['value']
+    rockyInstanceID = wsOutputs[0]['output_values'][0]['rocky_instance_id']['value']
+    windowsInstanceID = wsOutputs[0]['output_values'][0]['windows_instance_id']['value']
+
+    print("Ubuntu instance ID is " + str(ubuntuInstanceID))
+    print("Rocky instance ID is " + str(rockyInstanceID))
+    print("Windows instance ID is " + str(windowsInstanceID))
+
+    return ubuntuInstanceID, rockyInstanceID, windowsInstanceID
+
+def clientConnect(ubuntuInstanceID):
+    etcdServiceVar = os.environ.get('DATABASES_FOR_ETCD_CONNECTION')
+    json_object = json.loads(etcdServiceVar)
+    connectionVars = list(json_object.values())[1]
+
+    certDetails = connectionVars['certificate']['certificate_base64']
+    ca_cert=base64.b64decode(certDetails)
+    decodedCert = ca_cert.decode('utf-8')
+
+    certname = '/etc/ssl/certs/db-ca.crt'
+    with open(certname, 'w+') as output_file:
+        output_file.write(decodedCert)
+
+    etcdHost = connectionVars['hosts'][0]['hostname']
+    etcdPort =connectionVars['hosts'][0]['port']
+    etcdUser = connectionVars['authentication']['username']
+    etcdPass = connectionVars['authentication']['password']
+    etcdCert = '/etc/ssl/certs/db-ca.crt'
+
+    ectdClient = etcd3.client(
+        host=etcdHost, 
+        port=etcdPort, 
+        ca_cert=etcdCert, 
+        timeout=10, 
+        user=etcdUser, 
+        password=etcdPass
+    )
+    print("Connected to etcd service")
+    print("attempting to write to etcd service")
+    storeUbuntuId = ectdClient.put('/current_servers/ubuntu/id', ubuntuInstanceID)
+    print("Ubuntu instance ID written to etcd service")
+    print("pulling ubuntu instance ID from etcd service")
+    getUbuntuId = ectdClient.get('/current_servers/ubuntu/id')
+
 
 try:
     updateWorkspace(workspaceId, refreshToken, schematicsService)
     planWorkspace(workspaceId, refreshToken, schematicsService)
     applyWorkspace(workspaceId, refreshToken, schematicsService)
     getWorkspaceOutputs(workspaceId, schematicsService)
-    print(etcdVars)
+    clientConnect(ubuntuInstanceID)
 except ApiException as e:
      print("Workspace update failes with status code " + str(e.code) + ": " + e.message)
