@@ -8,12 +8,6 @@ import time
 import base64
 import etcd3
 
-## Only uncomment if you need to debug gprc connection.
-# os.environ['GRPC_TRACE'] = 'all'
-# os.environ['GRPC_VERBOSITY'] = 'DEBUG'
-
-
-
 # Set up IAM authenticator and Refresh Token
 authenticator = IAMAuthenticator(
     apikey=os.environ.get('IBMCLOUD_API_KEY'),
@@ -28,6 +22,33 @@ schematicsService = SchematicsV1(authenticator=authenticator)
 schematicsURL = "https://us.schematics.cloud.ibm.com"
 schematicsService.set_service_url(schematicsURL)
 workspaceId = os.environ.get('WORKSPACE_ID')
+
+etcdServiceVar = os.environ.get('DATABASES_FOR_ETCD_CONNECTION')
+json_object = json.loads(etcdServiceVar)
+connectionVars = list(json_object.values())[1]
+
+certDetails = connectionVars['certificate']['certificate_base64']
+ca_cert=base64.b64decode(certDetails)
+decodedCert = ca_cert.decode('utf-8')
+
+etcdCert = '/Users/ryan/tmp/db-ca.crt'
+#etcdCert = '/etc/ssl/certs/db-ca.crt'
+with open(etcdCert, 'w+') as output_file:
+    output_file.write(decodedCert)
+
+etcdHost = connectionVars['hosts'][0]['hostname']
+etcdPort =connectionVars['hosts'][0]['port']
+etcdUser = connectionVars['authentication']['username']
+etcdPass = connectionVars['authentication']['password']
+
+etcdClient = etcd3.client(
+    host=etcdHost, 
+    port=etcdPort, 
+    ca_cert=etcdCert,
+    timeout=10, 
+    user=etcdUser, 
+    password=etcdPass
+)
 
 # define functions
 def updateWorkspace(workspaceId, refreshToken, schematicsService):
@@ -106,63 +127,34 @@ def applyWorkspace(workspaceId, refreshToken, schematicsService):
             print("Workspace apply complete. Gathering workspace outputs.")
             break
 
-def getWorkspaceOutputs(workspaceId, schematicsService):
+# Function to pull specific output value from Schematics workspace based on `instance` parameter
+def getWorkspaceOutputs(schematicsService, workspaceId, instance):
     wsOutputs = schematicsService.get_workspace_outputs(
         w_id=workspaceId,
     ).get_result()
 
-    pullAllOutputs = pullUbuntuIp = wsOutputs[0]['output_values'][0]
-    # print("All outputs are: " + str(pullAllOutputs))
-    ubuntuInstanceID = wsOutputs[0]['output_values'][0]['ubuntu_instance_id']['value']
-    rockyInstanceID = wsOutputs[0]['output_values'][0]['rocky_instance_id']['value']
-    windowsInstanceID = wsOutputs[0]['output_values'][0]['windows_instance_id']['value']
+    outputValue = str(wsOutputs[0]['output_values'][0][instance]['value'])
+    return outputValue
 
-    print("Ubuntu instance ID is " + str(ubuntuInstanceID))
-    print("Rocky instance ID is " + str(rockyInstanceID))
-    print("Windows instance ID is " + str(windowsInstanceID))
+# Pull instance IDs from Schematics workspace
+def pullOutput(instance):
+    instanceId = getWorkspaceOutputs(schematicsService, workspaceId, instance=instance)
+    return instanceId
 
-    return ubuntuInstanceID, rockyInstanceID, windowsInstanceID
-
-def clientConnect(ubuntuInstanceID):
-    etcdServiceVar = os.environ.get('DATABASES_FOR_ETCD_CONNECTION')
-    json_object = json.loads(etcdServiceVar)
-    connectionVars = list(json_object.values())[1]
-
-    certDetails = connectionVars['certificate']['certificate_base64']
-    ca_cert=base64.b64decode(certDetails)
-    decodedCert = ca_cert.decode('utf-8')
-
-    certname = '/etc/ssl/certs/db-ca.crt'
-    with open(certname, 'w+') as output_file:
-        output_file.write(decodedCert)
-
-    etcdHost = connectionVars['hosts'][0]['hostname']
-    etcdPort =connectionVars['hosts'][0]['port']
-    etcdUser = connectionVars['authentication']['username']
-    etcdPass = connectionVars['authentication']['password']
-    etcdCert = '/etc/ssl/certs/db-ca.crt'
-
-    ectdClient = etcd3.client(
-        host=etcdHost, 
-        port=etcdPort, 
-        ca_cert=etcdCert, 
-        timeout=10, 
-        user=etcdUser, 
-        password=etcdPass
-    )
+def writeKeys(etcdClient):
     print("Connected to etcd service")
     print("attempting to write to etcd service")
-    storeUbuntuId = ectdClient.put('/current_servers/ubuntu/id', ubuntuInstanceID)
-    print("Ubuntu instance ID written to etcd service")
-    print("pulling ubuntu instance ID from etcd service")
-    getUbuntuId = ectdClient.get('/current_servers/ubuntu/id')
-
-
+    ubuntuInstanceID = str(pullOutput(instance = 'ubuntu_instance_id'))
+    rockyInstanceID = str(pullOutput(instance = 'rocky_instance_id'))
+    windowsInstanceID = str(pullOutput(instance = 'windows_instance_id'))
+    storeUbuntuId = etcdClient.put('/current_servers/ubuntu/id', ubuntuInstanceID)
+    storeRockyId = etcdClient.put('/current_servers/rocky/id', rockyInstanceID)
+    storeWindowsId = etcdClient.put('/current_servers/windows/id', windowsInstanceID)
+    print("Successfully wrote all instance ids to etcd service")
 try:
     updateWorkspace(workspaceId, refreshToken, schematicsService)
     planWorkspace(workspaceId, refreshToken, schematicsService)
     applyWorkspace(workspaceId, refreshToken, schematicsService)
-    getWorkspaceOutputs(workspaceId, schematicsService)
-    clientConnect(ubuntuInstanceID)
+    writeKeys(etcdClient)
 except ApiException as e:
      print("Workspace update failes with status code " + str(e.code) + ": " + e.message)
