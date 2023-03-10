@@ -35,19 +35,38 @@ etcdCert = '/etc/ssl/certs/db-ca.crt'
 with open(etcdCert, 'w+') as output_file:
     output_file.write(decodedCert)
 
-etcdHost = connectionVars['hosts'][0]['hostname']
-etcdPort = connectionVars['hosts'][0]['port']
-etcdUser = connectionVars['authentication']['username']
-etcdPass = connectionVars['authentication']['password']
-
 etcdClient = etcd3.client(
-    host=etcdHost, 
-    port=etcdPort, 
-    ca_cert=etcdCert,
-    timeout=10, 
-    user=etcdUser, 
-    password=etcdPass
+    host=connectionVars['hosts'][0]['hostname'], 
+    port=connectionVars['hosts'][0]['port'], 
+    ca_cert='/etc/ssl/certs/db-ca.crt',
+    timeout=10,
+    user=connectionVars['authentication']['username'], 
+    password=connectionVars['authentication']['password']
 )
+
+# def etcdClientConnection():
+#     etcdServiceVar = os.environ.get('DATABASES_FOR_ETCD_CONNECTION')
+#     json_object = json.loads(etcdServiceVar)
+#     connectionVars = list(json_object.values())[1]
+
+#     certDetails = connectionVars['certificate']['certificate_base64']
+#     ca_cert=base64.b64decode(certDetails)
+#     decodedCert = ca_cert.decode('utf-8')
+
+#     etcdCert = '/etc/ssl/certs/db-ca.crt'
+#     with open(etcdCert, 'w+') as output_file:
+#         output_file.write(decodedCert)
+
+#     etcdClient = etcd3.client(
+#         host=connectionVars['hosts'][0]['hostname'], 
+#         port=connectionVars['hosts'][0]['port'], 
+#         ca_cert='/etc/ssl/certs/db-ca.crt',
+#         timeout=10,
+#         user=connectionVars['authentication']['username'], 
+#         password=connectionVars['authentication']['password']
+#     )
+
+#     return etcdClient
 
 # define functions
 def updateWorkspace(workspaceId, refreshToken, schematicsService):
@@ -146,10 +165,14 @@ def writeKeys(etcdClient):
     ubuntuInstanceID = str(pullOutput(instance = 'ubuntu_instance_id'))
     rockyInstanceID = str(pullOutput(instance = 'rocky_instance_id'))
     windowsInstanceID = str(pullOutput(instance = 'windows_instance_id'))
-    storeUbuntuId = etcdClient.put('/current_servers/ubuntu/id', ubuntuInstanceID)
-    storeRockyId = etcdClient.put('/current_servers/rocky/id', rockyInstanceID)
-    storeWindowsId = etcdClient.put('/current_servers/windows/id', windowsInstanceID)
-    print("Successfully wrote all instance ids to etcd service")
+    print("Printing keys to be written to etcd service")
+    print(ubuntuInstanceID)
+    print(rockyInstanceID)
+    print(windowsInstanceID)
+    # storeUbuntuId = etcdClient.put('/current_servers/ubuntu/id', ubuntuInstanceID)
+    # storeRockyId = etcdClient.put('/current_servers/rocky/id', rockyInstanceID)
+    # storeWindowsId = etcdClient.put('/current_servers/windows/id', windowsInstanceID)
+    # print("Successfully wrote all instance ids to etcd service")
 try:
     updateWorkspace(workspaceId, refreshToken, schematicsService)
     planWorkspace(workspaceId, refreshToken, schematicsService)
